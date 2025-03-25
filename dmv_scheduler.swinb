@@ -1,0 +1,578 @@
+<div class="notebook">
+
+<div class="nb-cell html" name="htm1">
+
+</div>
+
+<div class="nb-cell html" name="htm2">
+<div>
+<h1>DMV Scheduler</h1>
+<dl>
+  <dt>Version</dt><dd>2.0</dd>
+  <dt>Author</dt><dd>Gabriel J. Michael</dd>
+  <dt>Last Updated</dt><dd>2024-09-22</dd>
+</dl>
+
+<button id="skip_intro">Skip Introduction</button>
+
+</div>
+
+
+
+<script>
+function scrollTo(name) {
+  const el = document.getElementsByName(name)[0];
+  el.scrollIntoView({behavior: "smooth"});
+}
+
+document.getElementById("skip_intro").addEventListener("click", function() {
+  scrollTo("user_editable_facts");
+});
+</script>
+</div>
+
+<div class="nb-cell markdown" name="md21">
+## Introduction
+
+This scheduler is written in [Prolog](https://en.wikipedia.org/wiki/Prolog). Prolog is a logic programming language. It excels at problems that involve defining facts, rules, and constraints, and searching for solutions that satisfy the given constraints. Logic programming languages are frequently used to solve industrial-scale scheduling problems.
+
+The scheduler has been written so that you, the user, only need to add, remove, or change a small number of facts. The scheduler will attempt to produce a solution that accounts for all these facts.
+
+#### Prolog Syntax
+
+To demystify Prolog's syntax, there are a few basic things you should know:
+
+* __Any line can be disabled by inserting a % at the beginning of the line.__ This is called "commenting out" the line. It's preferable to comment out a line than delete it, as you can easily re-enable the line by removing the %.
+
+* __A fact has the following form: day(mon).__
+	* Fact names always begin with a lowercase letter.
+    * Simple fact values also begin with a lowercase letter.
+    * Facts always end with a period ('.')
+    * This fact states there is a "day" called "mon".
+* __Some facts have more than one value.__ For example, can_do(alice_a, manager).
+	* Facts with more than one value describe a relationship.
+    * This fact states that there exists a relationship called "can_do" between "alice_a" and "manager".
+* __Fact values can be lists of other values.__ For example, available_on(alice_a, [mon, tue, wed, thu, fri]).
+	* This fact states that there exists a relationship called "available_on" between "alice_a" and a list of values, namely, "mon", "tue", "wed", "thu", and "fri".
+    * Lists can be empty. An empty list is denoted by [ ]. For example, available_on(alice_a, []) suggests that alice_a is not available.
+
+* __In Prolog, you run a program by making a query.__ Your query asks the computer what possible values can fulfill the rule you are querying.
+	* All the queries you will need have been written for you, but you will better understand how the scheduler works if you understand what a query does.
+* __Queries contain variables.__
+	* Variables you care about start with a Capital letter.
+    * Variables whose values you need to use, but don't need to know, start with an underscore. These variable are just like the first kind, except the computer won't print their value. 
+    * A lone underscore is a special variable that indicates we don't know or care what value this variable takes.
+    * For example, if you were to query day(Day), the response would be:
+    	* Day = mon
+    * But if you were to query day(_Day) or day(_), the response would simply be:
+    	* true
+
+#### Running Prolog Code
+
+This scheduler runs in an online environment called [SWISH](https://swish.swi-prolog.org/). SWISH is free, open source, and runs completely in the web browser without any installation.
+
+There are a few basic items you should know while using SWISH:
+
+* __You run a query by pressing the "play" button ▶ next to the query.__
+	* Results will appear below the query.
+* __When you see the 🌐 icon next to code, it means that portion of code is globally accessible.__ In this notebook, all code should be globally accesible. 
+	* If you instead see an icon like the Google Maps pin (similar to 📍), it means that portion of code is only accessible to the very next query. You'll need to change this setting by clicking the icon to toggle it back to 🌐.
+* __Some queries can produce multiple results.__
+	* In this notebook, after you receive a result, you should press "Stop" to terminate the query.
+    * If you need to run the query again, press the "play" button ▶ again.
+* __Sometimes a query produces no results.__
+	* If you run a query and only get `false`, this means the program could not find a solution that satisfies all the constraints.
+    * This might mean the constraints are impossible to satisfy (for example, you are requesting 10 assignments on Monday, but only have 9 workers available).
+    * It can also mean that the program couldn't find a solution _this time_. Due to some randomness in how tasks are assigned, you might be able to find a solution by simply trying to run the query again.
+</div>
+
+<div class="nb-cell html" name="htm3">
+<hr>
+<div name="user_editable_facts">
+<h3>🏁 User Editable Facts Begin Here 🏁</h3>
+<p>You can freely insert, remove, or update the following facts as needed.</p>
+</div>
+</div>
+
+<div class="nb-cell markdown" name="md2">
+__First, define the days on which to schedule tasks.__
+Remove days by commenting them (inserting a % at the beginning of the line).
+For example, remove training days or holidays that fall during the week to be scheduled.
+</div>
+
+<div class="nb-cell program" data-background="true" name="p1">
+day(mon).
+day(tue).
+day(wed).
+day(thu).
+day(fri).
+</div>
+
+<div class="nb-cell markdown" name="md3">
+__Next, define the workers for which to schedule tasks.__ New workers can be added and departed workers can be removed as needed. It is necessary, but not sufficient, for a worker to be listed here in order to schedule that worker.
+
+The order in which workers are specified does not matter, but for ease of maintenance, you should specify workers in alphabetical order.
+
+Commenting out a worker here will ensure that they don't appear in the schedule table. In contrast, if you leave a worker active here, but that worker has no availability or is otherwise not assigned, they will appear in the schedule table but without any assignments.
+</div>
+
+<div class="nb-cell program" data-background="true" name="p2">
+worker(alice_a).
+worker(bob_b).
+worker(charlie_c).
+worker(david_d).
+%worker(eve_e).
+worker(frank_f).
+worker(grace_g).
+worker(heidi_h).
+worker(ivan_i).
+worker(judy_j).
+worker(michael_m).
+worker(olivia_o).
+worker(peggy_p).
+worker(rupert_r).
+%worker(sybil_s).
+worker(ted_t).
+worker(victor_v).
+worker(wendy_w).
+</div>
+
+<div class="nb-cell markdown" name="md4">
+__Define each worker's availability,__ by specifying the worker's name, followed by a list of days on which the worker is available for scheduling.
+
+The order in which availability facts are specified does not matter, but for ease of maintenance, you should specify them in alphabetical order.
+
+If a worker is unavailable the entire week, you can either deactivate (comment out with a %) the line, or leave the line active but ensure that the list of days for that worker is empty.
+</div>
+
+<div class="nb-cell program" data-background="true" name="p3">
+available_on(alice_a, 	[mon, tue, wed, thu, fri]).
+available_on(bob_b, 	[mon, tue, wed, thu, fri]).
+available_on(charlie_c, [mon, wed, fri]).
+available_on(david_d, 	[mon, tue, wed, thu, fri]).
+available_on(eve_e, 	[mon, tue, wed, fri]).
+available_on(frank_f, 	[mon, tue, wed, thu, fri]).
+available_on(grace_g, 	[tue, thu]).
+available_on(heidi_h, 	[mon, tue, wed, thu, fri]).
+available_on(ivan_i, 	[mon, wed, thu, fri]).
+available_on(judy_j, 	[mon, tue, wed, thu, fri]).
+available_on(michael_m, []).
+available_on(olivia_o, 	[mon, tue, wed, thu, fri]).
+available_on(peggy_p, 	[mon, tue, wed, thu, fri]).
+available_on(rupert_r, 	[tue, wed, thu, fri]).
+available_on(sybil_s, 	[mon, tue, wed, thu]).
+available_on(ted_t, 	[tue, wed, thu]).
+available_on(victor_v, 	[mon]).
+available_on(wendy_w, 	[fri]).
+</div>
+
+<div class="nb-cell markdown" name="md6">
+__Define how many of each task are needed on a given day.__
+
+Specify the day, the task, and the number of that task required on that day.
+
+__Order matters.__ The scheduler will seek to assign tasks in the order they are specified, so the order here defines the relative priority of tasks. If you want to ensure that a task called `fpu` is filled before a task called `window(_)`, the `day_task_count` fact for `fpu` should come before the one for `window(_)`.
+
+In technical terms, the scheduler "greedily" consumes compatible workers for tasks, without regard to what other unassigned tasks the same worker might be able to fill. In practice, this means that more specific tasks should be listed before more general tasks.
+
+Note that window(_) tasks are special. The (_) indicates that the specific window value is not defined, and will be filled by the scheduler. This lets you request some number of windows without specifically listing which window numbers you need.
+
+Also note that if a day(_) has been deactivated earlier, specifying task counts for that day here won't affect the schedule.
+
+__Don't specify `desk` assignments.__ Rather than explicitly specifying the number of desk assignments, the scheduling algorithm will make all assignments first, then "pad" the schedule with as many desk assignment as possible.
+</div>
+
+<div class="nb-cell html" name="htm8">
+<div name="day_task_count_facts"></div>
+</div>
+
+<div class="nb-cell program" data-background="true" name="p5">
+day_task_count(mon, priority, 0).
+day_task_count(tue, priority, 0).
+day_task_count(wed, priority, 0).
+day_task_count(thu, priority, 0).
+day_task_count(fri, priority, 0).
+
+day_task_count(mon, secondary, 1).
+day_task_count(tue, secondary, 1).
+day_task_count(wed, secondary, 1).
+day_task_count(thu, secondary, 1).
+day_task_count(fri, secondary, 1).
+
+day_task_count(mon, manager, 1).
+day_task_count(tue, manager, 1).
+day_task_count(wed, manager, 1).
+day_task_count(thu, manager, 1).
+day_task_count(fri, manager, 1).
+
+day_task_count(mon, window(_), 6).
+day_task_count(tue, window(_), 7).
+day_task_count(wed, window(_), 7).
+day_task_count(thu, window(_), 7).
+day_task_count(fri, window(_), 6).
+</div>
+
+<div class="nb-cell html" name="htm5">
+<div>
+<br>
+<button id="goto_schedule">Jump to Scheduling</button>
+<br>
+<br>
+
+</div>
+
+
+<script>
+function scrollTo(name) {
+  const el = document.getElementsByName(name)[0];
+  el.scrollIntoView({behavior: "smooth"});
+}
+  
+document.getElementById("goto_schedule").addEventListener("click", function() {
+  scrollTo("generate_a_schedule");
+});
+</script></div>
+<div class="nb-cell markdown" name="md5">
+__Specify the tasks that workers can do.__ By default, we assume that all workers can be assigned to any window. However, we also explicitly define worker-task compatability for special roles such as `manager`, `primary`, or `secondary`.
+
+__If necessary, specify the tasks that workers cannot do.__ For example, assume a worker `xavier_x` on exchange from another office should not be assigned to the `desk` task. This can be specified like so:
+
+	cannot_do(xavier_x, desk).
+
+Note that you can always override these facts by manually scheduling workers for tasks.
+</div>
+
+<div class="nb-cell program" data-background="true" name="p4">
+%cannot_do(xavier_x, desk).
+
+% this line should always remain present and active as a base case for cannot_do/2
+cannot_do(_, _) :- false.
+
+% cannot_do rules always take precedence over can_do rules.
+can_do(Worker, Task) :- cannot_do(Worker, Task), !, false.
+
+% order does not matter
+can_do(alice_a, manager).
+can_do(heidi_h, manager).
+can_do(charlie_c, priority).
+can_do(grace_g, priority).
+can_do(ted_t, secondary).
+can_do(victor_v, secondary).
+can_do(wendy_w, secondary).
+
+% Any worker can be assigned to any window.
+can_do(Worker, Task) :- worker(Worker), Task = window(_Window).
+
+% Any worker can be assigned to desk.
+can_do(Worker, desk) :- worker(Worker).
+</div>
+
+<div class="nb-cell markdown" name="md13">
+__Define which windows are available.__ Deactivate windows by commenting them (inserting a % at the beginning of the line). This allows you to remove a window from scheduling if, for example, there are technical problems preventing it from functioning properly.
+
+Order matters: windows will be filled in order of specification, from top to bottom.
+</div>
+
+<div class="nb-cell program" data-background="true" name="p12">
+window(12).
+window(13).
+window(14).
+window(15).
+window(16).
+window(17).
+window(18).
+window(19).
+window(20).
+window(21).
+window(22).
+window(23).
+window(24).
+window(25).
+window(26).
+window(27).
+window(28).
+</div>
+
+<div class="nb-cell markdown" name="md12">
+#### A note about assignment distribution
+
+Prior versions of the scheduler attempted to ensure fair assignment distribution by keeping track of assignment history and factoring that history into each week's scheduling process. This resulted in an overly complex code base that still presented certain scheduling biases based on fact specification order.
+
+The current version of the scheduler relies primarily on random selection to determine assignment distribution, which drastically simplifies the codebase. The current scheduling algorithm is largely bias-free, which has been confirmed by generating thousands of simulated schedules and examing the results. While variance in outcomes still exists, it is primarily due to randomness.
+</div>
+
+<div class="nb-cell html" name="htm4">
+<div name="balance_facts"></div>
+</div>
+
+<div class="nb-cell markdown" name="md7">
+### 🛑 User-Editable Facts End Here 🛑
+___
+</div>
+
+<div class="nb-cell html" name="htm6">
+<div name="generate_a_schedule">
+<h3>🗓️ Generate a Schedule</h3>
+</div>
+</div>
+
+<div class="nb-cell markdown" name="md16">
+Generate a single schedule by querying =make_schedule/1= (press the ▶ button).
+
+__If you are satisfied with the schedule, you can export it by hovering in the top-left corner of the table__, clicking the ↓ (down arrow) to the right of "List of terms as a table", then clicking "Right click me to download as" which will open the schedule in a new tab.
+</div>
+
+<div class="nb-cell query" name="query_schedule">
+make_schedule(Schedule).
+</div>
+
+<div class="nb-cell html" name="htm7">
+<div>
+<br>
+<button id="goto_daytaskcounts">Go back to day_task_count facts</button>
+<br>
+
+</div>
+
+
+
+<script>
+function scrollTo(name) {
+  const el = document.getElementsByName(name)[0];
+  el.scrollIntoView({behavior: "smooth"});
+}
+  
+document.getElementById("goto_daytaskcounts").addEventListener("click", function() {
+  scrollTo("day_task_count_facts");
+});
+</script></div>
+<div class="nb-cell markdown" name="md14">
+---
+
+### 📝 🗓️ Generate a Schedule with User-Specified Pre-Assigned Tasks
+
+User-specified pre-assigned tasks can be easily added before the scheduler begins. Simply call =make_schedule/2= with a first argument that is a list of =Day-Worker-Task= triples.
+
+For ease of use, the query below will construct the list of =Day-Worker-Task= triples from the following list of =initial_schedule/3= facts.
+</div>
+
+<div class="nb-cell program" data-background="true" name="p8">
+initial_schedule(mon, ivan_i, desk).
+</div>
+
+<div class="nb-cell query" name="query_schedule_preassignments">
+findall(Day-Worker-Task, initial_schedule(Day, Worker, Task), _Initial),
+make_schedule(_Initial, Schedule).
+</div>
+
+<div class="nb-cell markdown" name="md18">
+### ⚠️ Don't Modify Anything Below This Line ⚠️
+___
+
+The remainder of the code specifies how the scheduler uses the facts defined above to construct a schedule and __should not be edited by the user.__
+
+=schedule/3= is the main scheduling predicate.
+</div>
+
+<div class="nb-cell program" data-background="true" name="p6">
+schedule_(Out, [], Out).
+schedule_(In, Wants, Out) :-
+	[Day-Task | RestWants] = Wants,
+	% find candidate workers who are not already assigned for this day (for any task)
+	findall(Day-W0, member(Day-W0-_, In), Assigned),
+	findall(W1, (worker(W1), maplist(dif(Day-W1), Assigned)), C1),
+	explain_failure(C1, Day-Task, "all workers have already been assigned tasks on this day"),
+	% of these, find candidate workers who are are available on this day
+	findall(W2, (member(W2, C1), available_on_(W2, Day)), C2),
+	explain_failure(C2, Day-Task, "there are no unassigned workers who are also available on this day"),
+	% of these, find candidate workers who can do this task
+	findall(W3, (member(W3, C2), can_do(W3, Task)), C3),
+	explain_failure(C3, Day-Task, "there are no unassigned and available workers who can do this task"),
+    % prefer candidates in C3 who have been assigned the fewest times to this specific task throughout the schedule
+    findall(W4, (member(_-W4-Task, In), member(W4, C3)), A2),  % filter the schedule to workers already assigned this specific task
+    % perform a group by aggregation, counting the number of assignments, sorting the results in ascending order
+    findall(A3-W5, (aggregate(count, member(W5, A2), A3)), GroupBy), sort(GroupBy, S), pairs_values(S, C4),
+    % C4 is now rank ordered for candidates already in the schedule, but is missing candidates not yet in the schedule
+    subtract(C3, C4, A4),
+    random_permutation(A4, A5),
+    append(A5, C4, C5), % insert a random permutation of candidates who haven't yet been scheduled at the head of the C4
+    % if C4 is non-empty, select the first element
+    (   [SelectedWorker|_] = C5
+    -&gt;  schedule_([Day-SelectedWorker-Task | In], RestWants, Out)
+    ;   % otherwise...
+	% if there are any candidates in C3 who cannot be assigned desk, prefer them now, otherwise they might go unassigned
+    findall(W6, (member(W6, C3), cannot_do(W6, desk)), C6),
+	% randomly select from one of the candidate lists in order of preference: C6 (non-desk), C3 (all)
+	random_member_coalesce(SelectedWorker, [C6, C3]),
+    schedule_([Day-SelectedWorker-Task | In], RestWants, Out)
+    ).
+</div>
+
+<div class="nb-cell markdown" name="md20">
+=schedule_pad/3= relates a schedule to a padded schedule, padded with some task `With`.
+</div>
+
+<div class="nb-cell program" data-background="true" name="p14">
+schedule_pad(In, With, Out) :-
+	% find all workers 
+	% find candidate workers who are 1) not already assigned for this day (for any task), 2) are available on this day, and 3) can do this task
+	available_day_workers(Available),
+	findall(Day-W0, member(Day-W0-_, In), Assigned),
+	subtract(Available, Assigned, Unassigned),
+	% only include those unscheduled day-workers who can do the padding task
+	include(can_do_(With), Unassigned, ToPad),
+	pair_with_value(ToPad, With, Padding),
+	append(In, Padding, Out).
+</div>
+
+<div class="nb-cell markdown" name="md9">
+These are specialized helper predicates.
+</div>
+
+<div class="nb-cell program" data-background="true" name="p7">
+% Convenience goals that will construct the list of Day-Tasks automatically
+schedule(Final) :- 
+	day_tasks(Wants),
+	schedule_([], Wants, S),
+	reverse(S, Final).
+schedule(Initial, Final) :- 
+	day_tasks(Wants),
+	findall(Day-Task, initial_schedule(Day, _, Task), Satisfied),
+    % remove the already-satisfied Day-Tasks in Initial from Wants, and proceed to schedule the remaining Needs
+    subtract(Wants, Satisfied, Needs),
+	schedule_(Initial, Needs, S),
+	reverse(S, Final).
+
+% Helps explain to the user why scheduling failed (i.e., why no candidates were available at the given stage)
+explain_failure([], What, Why) :-
+	format('Scheduling failed for ~w because ~w.~n', [What, Why]), false.
+explain_failure(Candidates, _, _) :-
+	[_H | _T] = Candidates, true.
+
+available_day_workers(List) :-
+	findall(D-W, (day(D), worker(W), available_on_(W, D)), List).
+
+% Pass a Day-Worker but only check day existence and worker-task compatibility
+can_do_(Task, Day-Worker) :- day(Day), can_do(Worker, Task).
+
+% Helper predicate to determine if a worker is available on a given day
+available_on_(Worker, Day) :-
+    worker(Worker),
+    available_on(Worker, Days),
+    member(Day, Days).
+
+% Construct a list of day-task pairs given day_task_count facts.
+day_tasks_(DayTasks) :-
+	day(Day),
+	day_task_count(Day, Task, Count),
+	functor(Task, Name, 0),
+	dif(Name, window),
+	length(DayTasks, Count),
+	maplist(=(Day-Task), DayTasks).
+day_tasks_(DayTasks) :-
+	day(Day),
+	day_task_count(Day, Task, Count),
+	functor(Task, window, 1),
+	findall(Day-window(W), window(W), AllDayTasks),
+	length(DayTasks, Count),
+	append(DayTasks, _, AllDayTasks).
+
+% Find all such lists of day-task pairs, and flatten them; this defines all the day-tasks that need to be scheduled
+day_tasks(FlatList) :-
+    findall(DayTasks, day_tasks_(DayTasks), NestedList),
+    flatten(NestedList, FlatList).
+</div>
+
+<div class="nb-cell markdown" name="md15">
+These are generic helper predicates.
+</div>
+
+<div class="nb-cell program" data-background="true" name="p15">
+% Helper predicate for random_member_coalesce
+random_member_(_, prev(true, Elem), prev(true, Elem)) :- !.
+random_member_(List, prev(false, _), prev(true, Elem)) :- random_member(Elem, List).
+random_member_([], prev(false, _), prev(false, _)).
+
+% select a random member from the first non-empty list in a list of lists,
+random_member_coalesce(Elem, ListOfLists) :-
+    foldl(random_member_, ListOfLists, prev(false, _), prev(true, Elem)).
+
+pair_with_value_(Value, Element, Pair) :-
+    Pair =.. ['-', Element, Value].
+
+pair_with_value(List, Value, Pairs) :-
+    maplist(pair_with_value_(Value), List, Pairs).
+</div>
+
+<div class="nb-cell markdown" name="md8">
+The remaining predicates are used for printing/display functionality.
+</div>
+
+<div class="nb-cell program" data-background="true" name="p11">
+make_schedule(Table) :-
+	schedule(S), schedule_pad(S, desk, P), worker_schedule_rows(P, Table).
+
+make_schedule(Initial, Table) :-
+	schedule(Initial, S), schedule_pad(S, desk, P), worker_schedule_rows(P, Table).
+
+worker_schedule_rows(Schedule, SortedRows) :- 
+	findall(Row, (worker(Worker), worker_schedule_row(Worker, Schedule, Row)), UnsortedRows), sort(UnsortedRows, SortedRows).
+
+% find a worker's day-task pairs, ensure all days appear by merging in a default dict,
+% convert back to pairs, custom sort so days of the week appear in order,
+% and convert to a term for proper display as a table
+worker_schedule_row(Worker, Schedule, RowTerm) :- 
+	findall(D-T, member(D-Worker-T, Schedule), Pairs),
+	dict_pairs(WorkerWeek, week, Pairs),
+	DefaultWeek = week{mon: '-', tue: '-', wed: '-', thu: '-', fri: '-'}, 
+	put_dict(WorkerWeek, DefaultWeek, Out),
+	dict_pairs(Out, week, OutPairs),
+	predsort(sort_week_pairs, OutPairs, Sorted),
+	pairs_values(Sorted, SortedValues),
+	format_name(Worker, FormattedWorker),
+	append([FormattedWorker], SortedValues, Row),
+	RowTerm =.. [row | Row].
+
+format_name(Name, Formatted) :- 
+	split_string(Name, "_", "", Split),
+	[GivenName, SurnameInitial] = Split,
+	string_chars(GivenName, [GivenNameInitial|GivenNameRest]),
+	upcase_atom(GivenNameInitial, GivenNameInitialUpper),
+	atomic_list_concat([GivenNameInitialUpper|GivenNameRest], GivenNameCapitalized),
+	upcase_atom(SurnameInitial, SurnameInitialUpper),
+	atomic_list_concat([GivenNameCapitalized, ' ', SurnameInitialUpper, '.'], Formatted).
+</div>
+
+<div class="nb-cell markdown" name="md10">
+Helper predicate used by =predsort/3= to sort =Day-Task= pairs in custom order.
+</div>
+
+<div class="nb-cell program" data-background="true" name="p10">
+sort_week_pairs(&lt;, E1, E2) :- 
+    Day1-_ = E1,
+    Day2-_ = E2,
+    nth1(Index1, [mon, tue, wed, thu, fri], Day1),
+    nth1(Index2, [mon, tue, wed, thu, fri], Day2),
+    Index1 &lt; Index2.
+sort_week_pairs(&gt;, E1, E2) :- 
+    Day1-_ = E1,
+    Day2-_ = E2,
+    nth1(Index1, [mon, tue, wed, thu, fri], Day1),
+    nth1(Index2, [mon, tue, wed, thu, fri], Day2),
+    Index1 &gt; Index2.
+sort_week_pairs(=, E1, E2) :- 
+    Day1-_ = E1,
+    Day2-_ = E2,
+    nth1(Index1, [mon, tue, wed, thu, fri], Day1),
+    nth1(Index2, [mon, tue, wed, thu, fri], Day2),
+    Index1 = Index2.
+</div>
+
+<div class="nb-cell markdown" name="md11">
+Use SWISH's table rendering to present a list of =row/6= terms as an HTML table.
+</div>
+
+<div class="nb-cell program" data-background="true" name="p9">
+:- use_rendering(table, [header(row("Name", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"))]).
+</div>
+</div>
